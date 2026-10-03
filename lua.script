@@ -1,0 +1,467 @@
+--[[
+    SpinPractices Mobile Smooth Aim + ESP
+    Private build — 4080
+    Do not redistribute without permission.
+]]
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+getgenv().Config = {
+    Aimbot = true,
+    AimMode = "Always",
+    Smoothness = 0.18,
+    FOV = 999,
+    TeamCheck = false,
+    TargetPart = "Head",
+
+    ESP = true,
+    BoxESP = true,
+    NameESP = true,
+    DistanceESP = true,
+    ESPColor = Color3.fromRGB(0, 190, 255),
+    MaxDistance = 1200
+}
+
+local ESPs = {}
+local menuOpen = false
+local holdingAim = false
+
+local function isAlive(plr)
+    local char = plr.Character
+    if not char then return false end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+    return hum and root and hum.Health > 0
+end
+
+local function getClosest()
+    local closest, closestDist = nil, Config.FOV
+    local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and isAlive(plr) then
+            if Config.TeamCheck and plr.Team and LocalPlayer.Team and plr.Team == LocalPlayer.Team then
+                continue
+            end
+
+            local root = plr.Character.HumanoidRootPart
+            local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
+
+            if onScreen then
+                local dist = (Vector2.new(pos.X, pos.Y) - center).Magnitude
+                if dist < closestDist then
+                    closestDist = dist
+                    closest = plr
+                end
+            end
+        end
+    end
+    return closest
+end
+
+RunService.RenderStepped:Connect(function()
+    if not Config.Aimbot then return end
+    if Config.AimMode == "Hold" and not holdingAim then return end
+
+    local target = getClosest()
+    if not target then return end
+
+    local part = target.Character:FindFirstChild(Config.TargetPart)
+                 or target.Character:FindFirstChild("Head")
+                 or target.Character:FindFirstChild("HumanoidRootPart")
+    if not part then return end
+
+    local camPos = Camera.CFrame.Position
+    local targetPos = part.Position
+    local direction = (targetPos - camPos).Unit
+    local current = Camera.CFrame.LookVector
+
+    local smooth = current:Lerp(direction, Config.Smoothness)
+    Camera.CFrame = CFrame.new(camPos, camPos + smooth)
+end)
+
+local function createESP(plr)
+    if ESPs[plr] or plr == LocalPlayer then return end
+
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "SpinESP"
+    highlight.FillColor = Config.ESPColor
+    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+    highlight.FillTransparency = 0.55
+    highlight.OutlineTransparency = 0
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.Enabled = false
+
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "SpinName"
+    billboard.Size = UDim2.new(0, 180, 0, 45)
+    billboard.StudsOffset = Vector3.new(0, 3.4, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Enabled = false
+
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Size = UDim2.new(1, 0, 0.55, 0)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.TextColor3 = Config.ESPColor
+    nameLabel.TextStrokeTransparency = 0.15
+    nameLabel.Font = Enum.Font.GothamBold
+    nameLabel.TextSize = 13
+    nameLabel.Text = plr.Name
+    nameLabel.Parent = billboard
+
+    local distLabel = Instance.new("TextLabel")
+    distLabel.Size = UDim2.new(1, 0, 0.45, 0)
+    distLabel.Position = UDim2.new(0, 0, 0.55, 0)
+    distLabel.BackgroundTransparency = 1
+    distLabel.TextColor3 = Color3.fromRGB(180, 230, 255)
+    distLabel.TextStrokeTransparency = 0.25
+    distLabel.Font = Enum.Font.Gotham
+    distLabel.TextSize = 11
+    distLabel.Text = ""
+    distLabel.Parent = billboard
+
+    ESPs[plr] = {
+        highlight = highlight,
+        billboard = billboard,
+        nameLabel = nameLabel,
+        distLabel = distLabel
+    }
+end
+
+local function removeESP(plr)
+    if ESPs[plr] then
+        pcall(function() ESPs[plr].highlight:Destroy() end)
+        pcall(function() ESPs[plr].billboard:Destroy() end)
+        ESPs[plr] = nil
+    end
+end
+
+local function updateESP(plr)
+    local data = ESPs[plr]
+    if not data then return end
+
+    if not Config.ESP or not isAlive(plr) then
+        data.highlight.Enabled = false
+        data.billboard.Enabled = false
+        return
+    end
+
+    local char = plr.Character
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
+    local distance = (root.Position - Camera.CFrame.Position).Magnitude
+    if distance > Config.MaxDistance then
+        data.highlight.Enabled = false
+        data.billboard.Enabled = false
+        return
+    end
+
+    if Config.BoxESP then
+        data.highlight.Adornee = char
+        data.highlight.FillColor = Config.ESPColor
+        data.highlight.Parent = char
+        data.highlight.Enabled = true
+    else
+        data.highlight.Enabled = false
+    end
+
+    if Config.NameESP or Config.DistanceESP then
+        data.billboard.Adornee = char:FindFirstChild("Head") or root
+        data.billboard.Parent = char
+        data.billboard.Enabled = true
+        data.nameLabel.Visible = Config.NameESP
+        data.nameLabel.TextColor3 = Config.ESPColor
+        data.nameLabel.Text = plr.Name
+        data.distLabel.Visible = Config.DistanceESP
+        data.distLabel.Text = math.floor(distance) .. "m"
+    else
+        data.billboard.Enabled = false
+    end
+end
+
+for _, plr in ipairs(Players:GetPlayers()) do
+    createESP(plr)
+end
+Players.PlayerAdded:Connect(createESP)
+Players.PlayerRemoving:Connect(removeESP)
+
+RunService.RenderStepped:Connect(function()
+    for plr in pairs(ESPs) do
+        updateESP(plr)
+    end
+end)
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "SpinMobile4080"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.IgnoreGuiInset = true
+pcall(function() ScreenGui.Parent = CoreGui end)
+if not ScreenGui.Parent then
+    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+end
+
+local ToggleFrame = Instance.new("Frame")
+ToggleFrame.Name = "ToggleFrame"
+ToggleFrame.Size = UDim2.new(0, 72, 0, 72)
+ToggleFrame.Position = UDim2.new(1, -92, 0.4, 0)
+ToggleFrame.BackgroundColor3 = Color3.fromRGB(8, 10, 18)
+ToggleFrame.BorderSizePixel = 0
+ToggleFrame.ZIndex = 30
+ToggleFrame.Active = true
+ToggleFrame.Parent = ScreenGui
+Instance.new("UICorner", ToggleFrame).CornerRadius = UDim.new(0, 16)
+
+local stroke = Instance.new("UIStroke")
+stroke.Color = Color3.fromRGB(0, 170, 255)
+stroke.Thickness = 2.5
+stroke.Parent = ToggleFrame
+
+local Photo = Instance.new("ImageLabel")
+Photo.Name = "Photo"
+Photo.Size = UDim2.new(1, -6, 1, -6)
+Photo.Position = UDim2.new(0, 3, 0, 3)
+Photo.BackgroundTransparency = 1
+Photo.Image = "rbxassetid://139210078438680"
+Photo.ScaleType = Enum.ScaleType.Crop
+Photo.ZIndex = 31
+Photo.Parent = ToggleFrame
+Instance.new("UICorner", Photo).CornerRadius = UDim.new(0, 13)
+
+local draggingToggle = false
+local dragStart, startPos
+
+ToggleFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        draggingToggle = true
+        dragStart = input.Position
+        startPos = ToggleFrame.Position
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if draggingToggle and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        ToggleFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        draggingToggle = false
+    end
+end)
+
+local Main = Instance.new("Frame")
+Main.Name = "Main"
+Main.Size = UDim2.new(0, 280, 0, 430)
+Main.Position = UDim2.new(1, 30, 0.18, 0)
+Main.BackgroundColor3 = Color3.fromRGB(12, 14, 24)
+Main.BorderSizePixel = 0
+Main.ZIndex = 20
+Main.Parent = ScreenGui
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 20)
+
+local header = Instance.new("Frame")
+header.Size = UDim2.new(1, 0, 0, 58)
+header.BackgroundColor3 = Color3.fromRGB(0, 110, 220)
+header.BorderSizePixel = 0
+header.Parent = Main
+Instance.new("UICorner", header).CornerRadius = UDim.new(0, 20)
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -24, 0, 28)
+title.Position = UDim2.new(0, 18, 0, 8)
+title.BackgroundTransparency = 1
+title.Text = "SpinPractices"
+title.TextColor3 = Color3.new(1, 1, 1)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 18
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = header
+
+local subtitle = Instance.new("TextLabel")
+subtitle.Size = UDim2.new(1, -24, 0, 16)
+subtitle.Position = UDim2.new(0, 18, 0, 34)
+subtitle.BackgroundTransparency = 1
+subtitle.Text = "Smooth Aim + ESP"
+subtitle.TextColor3 = Color3.fromRGB(190, 220, 255)
+subtitle.Font = Enum.Font.Gotham
+subtitle.TextSize = 12
+subtitle.TextXAlignment = Enum.TextXAlignment.Left
+subtitle.Parent = header
+
+local function slideMenu(open)
+    menuOpen = open
+    local target = open and UDim2.new(1, -300, 0.18, 0) or UDim2.new(1, 30, 0.18, 0)
+    TweenService:Create(Main, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+        Position = target
+    }):Play()
+    stroke.Color = open and Color3.fromRGB(220, 50, 50) or Color3.fromRGB(0, 170, 255)
+end
+
+local clickPos
+ToggleFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        clickPos = input.Position
+    end
+end)
+ToggleFrame.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        if clickPos and (input.Position - clickPos).Magnitude < 12 then
+            slideMenu(not menuOpen)
+        end
+    end
+end)
+
+local function makeToggle(name, y, default, callback)
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0.9, 0, 0, 40)
+    frame.Position = UDim2.new(0.05, 0, 0, y)
+    frame.BackgroundColor3 = Color3.fromRGB(20, 24, 38)
+    frame.BorderSizePixel = 0
+    frame.Parent = Main
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 12)
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(0.6, 0, 1, 0)
+    label.Position = UDim2.new(0, 14, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Text = name
+    label.TextColor3 = Color3.fromRGB(220, 230, 255)
+    label.Font = Enum.Font.GothamMedium
+    label.TextSize = 14
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = frame
+
+    local switch = Instance.new("TextButton")
+    switch.Size = UDim2.new(0, 56, 0, 30)
+    switch.Position = UDim2.new(1, -68, 0.5, -15)
+    switch.BackgroundColor3 = default and Color3.fromRGB(0, 160, 255) or Color3.fromRGB(45, 50, 65)
+    switch.Text = ""
+    switch.Parent = frame
+    Instance.new("UICorner", switch).CornerRadius = UDim.new(1, 0)
+
+    local circle = Instance.new("Frame")
+    circle.Size = UDim2.new(0, 24, 0, 24)
+    circle.Position = default and UDim2.new(1, -27, 0.5, -12) or UDim2.new(0, 3, 0.5, -12)
+    circle.BackgroundColor3 = Color3.new(1, 1, 1)
+    circle.BorderSizePixel = 0
+    circle.Parent = switch
+    Instance.new("UICorner", circle).CornerRadius = UDim.new(1, 0)
+
+    local state = default
+    switch.MouseButton1Click:Connect(function()
+        state = not state
+        switch.BackgroundColor3 = state and Color3.fromRGB(0, 160, 255) or Color3.fromRGB(45, 50, 65)
+        circle.Position = state and UDim2.new(1, -27, 0.5, -12) or UDim2.new(0, 3, 0.5, -12)
+        callback(state)
+    end)
+end
+
+makeToggle("Smooth Aimbot", 72, true, function(v) Config.Aimbot = v end)
+makeToggle("Aim Always", 122, true, function(v)
+    Config.AimMode = v and "Always" or "Hold"
+end)
+makeToggle("ESP", 172, true, function(v) Config.ESP = v end)
+makeToggle("Highlight", 222, true, function(v) Config.BoxESP = v end)
+makeToggle("Name + Dist", 272, true, function(v)
+    Config.NameESP = v
+    Config.DistanceESP = v
+end)
+
+local sliderFrame = Instance.new("Frame")
+sliderFrame.Size = UDim2.new(0.9, 0, 0, 54)
+sliderFrame.Position = UDim2.new(0.05, 0, 0, 322)
+sliderFrame.BackgroundColor3 = Color3.fromRGB(20, 24, 38)
+sliderFrame.BorderSizePixel = 0
+sliderFrame.Parent = Main
+Instance.new("UICorner", sliderFrame).CornerRadius = UDim.new(0, 12)
+
+local sliderLabel = Instance.new("TextLabel")
+sliderLabel.Size = UDim2.new(1, -20, 0, 18)
+sliderLabel.Position = UDim2.new(0, 14, 0, 6)
+sliderLabel.BackgroundTransparency = 1
+sliderLabel.Text = "Smoothness: 0.18"
+sliderLabel.TextColor3 = Color3.fromRGB(200, 220, 255)
+sliderLabel.Font = Enum.Font.Gotham
+sliderLabel.TextSize = 13
+sliderLabel.TextXAlignment = Enum.TextXAlignment.Left
+sliderLabel.Parent = sliderFrame
+
+local bar = Instance.new("Frame")
+bar.Size = UDim2.new(0.9, 0, 0, 10)
+bar.Position = UDim2.new(0.05, 0, 0, 32)
+bar.BackgroundColor3 = Color3.fromRGB(35, 42, 60)
+bar.BorderSizePixel = 0
+bar.Parent = sliderFrame
+Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 5)
+
+local fill = Instance.new("Frame")
+fill.Size = UDim2.new(0.36, 0, 1, 0)
+fill.BackgroundColor3 = Color3.fromRGB(0, 160, 255)
+fill.BorderSizePixel = 0
+fill.Parent = bar
+Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 5)
+
+local sliding = false
+bar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        sliding = true
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        sliding = false
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if sliding and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local rel = math.clamp((input.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+        local val = 0.05 + (0.35 * rel)
+        val = math.floor(val * 100) / 100
+        fill.Size = UDim2.new(rel, 0, 1, 0)
+        sliderLabel.Text = "Smoothness: " .. string.format("%.2f", val)
+        Config.Smoothness = val
+    end
+end)
+
+local HoldBtn = Instance.new("TextButton")
+HoldBtn.Size = UDim2.new(0.9, 0, 0, 42)
+HoldBtn.Position = UDim2.new(0.05, 0, 0, 388)
+HoldBtn.BackgroundColor3 = Color3.fromRGB(0, 175, 95)
+HoldBtn.Text = "HOLD AIM"
+HoldBtn.TextColor3 = Color3.new(1, 1, 1)
+HoldBtn.Font = Enum.Font.GothamBold
+HoldBtn.TextSize = 15
+HoldBtn.Parent = Main
+Instance.new("UICorner", HoldBtn).CornerRadius = UDim.new(0, 12)
+
+HoldBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        holdingAim = true
+        HoldBtn.BackgroundColor3 = Color3.fromRGB(0, 255, 140)
+        HoldBtn.Text = "AIMING..."
+    end
+end)
+HoldBtn.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        holdingAim = false
+        HoldBtn.BackgroundColor3 = Color3.fromRGB(0, 175, 95)
+        HoldBtn.Text = "HOLD AIM"
+    end
+end)
+
+print("[4080] SpinPractices Mobile loaded")
+print("Arrastra la foto | Toca la foto = abrir/cerrar menú")
+```
+
+Stashed as txt.
